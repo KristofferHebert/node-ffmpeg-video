@@ -22,79 +22,60 @@
 
 const fs = require('fs')
 const si = require('systeminformation')
-const path = require('path')
-const fork = require('child_process').fork;
-const url = 'https://www.youtube.com/watch?v=4pYlgOUJq58';
+const fork = require('child_process').fork
+const youtubedl = require('youtube-dl')
+const url = 'https://www.youtube.com/watch?v=4pYlgOUJq58'
+const perf = require('execution-time')()
 const id = url.split("?v=").pop()
-var stack = 0;
-
-const now = new Date()
+var stack = [];
 const start = process.hrtime()
 
 var timemark = null
 
-// const command = ffmpeg()
-
-function getObjectFromXml(text) {
-  var result
-  parseString(text, (e, r) => { result = r })
-  return result
-}
-
-function progress(progress){
-  if (progress.timemark != timemark) {
-    timemark = progress.timemark
-    console.log(timemark)
-  }
- }
-
-function error(err, stdout, stderr){
-  console.log('Video Error: ' + err.message)
-}
-
-function end(){
-  console.log('Finished')
-}
-
-
-var youtubedl = require('youtube-dl');
-var fileSize = 0
-
 async function getVideo(url){
   var percentage = 0;
-  var size = 0; 
+  var fileName = `${id}.mp4`
+  var fileSize = 0
 
-  // // youtube-dl -v https://www.youtube.com/watch\?v\=Y6e_m9iq-4Q --skip-download --write-sub --all-subs --convert-subs srt
-  console.log('Getting video...')
-  var video = youtubedl(url,
-    // Optional arguments passed to youtube-dl.
-    [
-    '--format=18',
-    '--skip-download',
-    '--write-sub',
-    '--all-subs',
-    '--convert-subs=srt'
-  ],
-  
-    { start: percentage, cwd: __dirname });
-   
-  // Will be called when the download starts.
-  video.on('info', function(info) {
-    console.log('Download started');
-    fileSize = info.size;
-
-  })
-
-  video.on('data', function data(chunk) {
-    percentage += chunk.length;
-    if (fileSize) {
-      console.log('Percentage: ', (percentage / fileSize * 100).toFixed(2))
+  return new Promise(function(resolve, reject){ 
+    if(fs.existsSync(fileName)){
+      console.log(fileName, 'exists')
+      return resolve()
     }
-  })
-   
-  video.pipe(fs.createWriteStream(`${id}.mp4`))
+  
+    console.log('Getting video...')
+    var video = youtubedl(url,
+      // Optional arguments passed to youtube-dl.
+      [
+      '--format=18',
+      '--skip-download',
+      '--write-sub',
+      '--all-subs',
+      '--convert-subs=srt'
+    ],
+    
+      { start: percentage, cwd: __dirname });
+     
+    // Will be called when the download starts.
+    video.on('info', function(info) {
+      console.log('Download started')
+      fileSize = info.size;
+    })
+  
+    video.on('data', function data(chunk) {
+      percentage += chunk.length;
+      if (fileSize) {
+        console.log('Percentage: ', (percentage / fileSize * 100).toFixed(2))
+      }
+    })
 
-  return video
+    video.on('end', function () {
+      resolve()
+    })
+     
+    video.pipe(fs.createWriteStream(fileName))
+  })
+
 }
 
 async function getSubTitles(url){
@@ -115,52 +96,43 @@ async function getSubTitles(url){
 }
 
 function scheduleWorker(videoID, index){
-  var worker = fork('./worker.js', [videoID, index])
-  // worker.on('message', function (message) {
-  //   console.log(message);
-  // });
-  
-  worker.on('error', function (error) {
-    console.log('stderr: ' + error);
-  });
-  
-  worker.on('exit', function (code) {
-    console.log('complete', index)
-    stack--;
-  });
-  return worker
+  return new Promise(function(resolve, reject){
+    var worker = fork('./worker.js', [videoID, index])
+    
+    worker.on('error', function (error) {
+      console.log('stderr: ' + error)
+      reject(error)
+    })
+    
+    worker.on('exit', function (code) {
+      console.log('Completed: ', index)
+      resolve(index)
+    });
+  })
 }
 
-
 async function sv(){
+  perf.start()
   let video = await getVideo(url)
-  video.on('end', async function end () {
-    console.log('Done downloading video')
-    let titles = await getSubTitles(url)
-    var cores = await si.cpu()
-    cores = cores.physicalCores;
-    
-    console.log('Number of Cores:', cores)
 
-    fs.renameSync(titles,`${id}.en.vtt`)
+  console.log('Done downloading video')
+  let titles = await getSubTitles(url)
+  var cores = await si.cpu()
+  cores = cores.physicalCores
 
-    for(var i = 1; i <= cores; i++){
-      scheduleWorker(id, i);
-    }
+  console.log('Number of Cores:', cores)
 
-    var total = new Date() - now,
-    end = process.hrtime(start)
+  fs.renameSync(titles,`${id}.en.vtt`)
 
-    // console.info('Execution time (hr): %ds %dms', hrend[0], hrend[1] / 1000000)
-    while(stack != 0){
-      console.log(stack)
-      if(stack === 0){
-        console.info('Execution time: %dms', total)
-        process.exit()
-      }
-    }
+  for(var i = 1; i <= cores; i++){
+    stack.push(scheduleWorker(id, i));
+  }
 
-  })
+  var timer = process.hrtime(start)
+  console.log('Starting...')
+  await Promise.all(stack)
+  console.log('Completed All')
+  console.info(`Execution time: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
 
 }
 

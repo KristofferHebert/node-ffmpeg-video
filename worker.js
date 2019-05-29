@@ -22,14 +22,10 @@ function encodeVideoWithSubtitles(ID, INDEX){
     ffmpeg()
     .input(`${ID}.mp4`)
     .videoFilter(`subtitles=${ID}.en.ass`)
-    .output(`${ID}.${INDEX}.en.caption.mp4`)
-    .on('end', function(){
-      process.exit()
-    })
+    .output(`./output/${ID}.${INDEX}.en.caption.mp4`)
     .exec()
-
-
-
 }
 
 encodeVideoWithSubtitles(ID, INDEX)
+
+ module.exports = encodeVideoWithSubtitles
