@@ -2,6 +2,10 @@ node_modules
 .DS_Store
 output
 
+*.mp4
+*.vtt
+*.ass
+
 # exclude everything
 output/*
 

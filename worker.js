@@ -10,9 +10,6 @@ const ID = process.argv[2]
 
 // Index of Video
 const INDEX  = process.argv[3]
-var fileSize = 0
-
-console.log(ID,INDEX)
 
 function encodeVideoWithSubtitles(ID, INDEX){
     console.log('Burning Subtitles into video...')
@@ -26,7 +23,13 @@ function encodeVideoWithSubtitles(ID, INDEX){
     .input(`${ID}.mp4`)
     .videoFilter(`subtitles=${ID}.en.ass`)
     .output(`${ID}.${INDEX}.en.caption.mp4`)
+    .on('end', function(){
+      process.exit()
+    })
     .exec()
+
+
+
 }
 
 encodeVideoWithSubtitles(ID, INDEX)

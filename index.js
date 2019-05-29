@@ -24,14 +24,13 @@ const fs = require('fs')
 const si = require('systeminformation')
 const path = require('path')
 const fork = require('child_process').fork;
-var url = 'https://www.youtube.com/watch?v=4pYlgOUJq58';
-var id = url.split("?v=").pop()
-
+const url = 'https://www.youtube.com/watch?v=4pYlgOUJq58';
+const id = url.split("?v=").pop()
+var stack = 0;
 
 const now = new Date()
 const start = process.hrtime()
 
-var numberOfCores = 0
 var timemark = null
 
 // const command = ffmpeg()
@@ -59,8 +58,6 @@ function end(){
 
 
 var youtubedl = require('youtube-dl');
-var url = 'https://www.youtube.com/watch?v=4pYlgOUJq58';
-var id = url.split("?v=").pop()
 var fileSize = 0
 
 async function getVideo(url){
@@ -117,45 +114,54 @@ async function getSubTitles(url){
   })
 }
 
+function scheduleWorker(videoID, index){
+  var worker = fork('./worker.js', [videoID, index])
+  // worker.on('message', function (message) {
+  //   console.log(message);
+  // });
+  
+  worker.on('error', function (error) {
+    console.log('stderr: ' + error);
+  });
+  
+  worker.on('exit', function (code) {
+    console.log('complete', index)
+    stack--;
+  });
+  return worker
+}
+
+
 async function sv(){
   let video = await getVideo(url)
   video.on('end', async function end () {
     console.log('Done downloading video')
     let titles = await getSubTitles(url)
+    var cores = await si.cpu()
+    cores = cores.physicalCores;
+    
+    console.log('Number of Cores:', cores)
+
     fs.renameSync(titles,`${id}.en.vtt`)
 
-    // var worker = spawn('node ./worker.js', ['4pYlgOUJq58', '1'])
-    var worker = fork('./worker.js', ['4pYlgOUJq58', '1'])
-    var worker1 = fork('./worker.js', ['4pYlgOUJq58', '2'])
-    var worker2 = fork('./worker.js', ['4pYlgOUJq58', '3'])
-    var worker3 = fork('./worker.js', ['4pYlgOUJq58', '4'])
-
-    worker.on('data', function (data) {
-      console.log('stdout: ' + data);
-    });
-    
-    worker.on('error', function (error) {
-      console.log('stderr: ' + error);
-    });
-    
-    worker.on('exit', function (code) {
-      console.log('child process exited with code ' + code);
-    });
-
+    for(var i = 1; i <= cores; i++){
+      scheduleWorker(id, i);
+    }
 
     var total = new Date() - now,
     end = process.hrtime(start)
 
-    console.info('Execution time: %dms', total)
-    console.info('Execution time (hr): %ds %dms', hrend[0], hrend[1] / 1000000)
+    // console.info('Execution time (hr): %ds %dms', hrend[0], hrend[1] / 1000000)
+    while(stack != 0){
+      console.log(stack)
+      if(stack === 0){
+        console.info('Execution time: %dms', total)
+        process.exit()
+      }
+    }
 
   })
 
 }
 
 sv()
-
-
-
-
-
