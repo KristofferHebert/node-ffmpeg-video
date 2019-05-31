@@ -24,8 +24,10 @@ const fs = require('fs')
 const si = require('systeminformation')
 const fork = require('child_process').fork
 const youtubedl = require('youtube-dl')
-const url = 'https://www.youtube.com/watch?v=4pYlgOUJq58'
+const encodeVideoWithSubtitles = require('./encoder')
 const perf = require('execution-time')()
+
+const url = 'https://www.youtube.com/watch?v=4pYlgOUJq58'
 const id = url.split("?v=").pop()
 var stack = [];
 const start = process.hrtime()
@@ -95,9 +97,9 @@ async function getSubTitles(url){
   })
 }
 
-function scheduleWorker(videoID, index){
+function scheduleWorker(videoID, index, cores){
   return new Promise(function(resolve, reject){
-    var worker = fork('./worker.js', [videoID, index])
+    var worker = fork('./worker.js', [videoID, index, cores])
     
     worker.on('error', function (error) {
       console.log('stderr: ' + error)
@@ -111,7 +113,7 @@ function scheduleWorker(videoID, index){
   })
 }
 
-async function sv(){
+async function multiCore(){
   perf.start()
   let video = await getVideo(url)
 
@@ -125,15 +127,45 @@ async function sv(){
   fs.renameSync(titles,`${id}.en.vtt`)
 
   for(var i = 1; i <= cores; i++){
-    stack.push(scheduleWorker(id, i));
+    stack.push(scheduleWorker(id, i, cores));
   }
 
   var timer = process.hrtime(start)
   console.log('Starting...')
   await Promise.all(stack)
+  stack = []
   console.log('Completed All')
-  console.info(`Execution time: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
+  console.info(`Execution time Parallel Processing: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
 
 }
+async function singleCore(){
+  perf.start()
 
-sv()
+  var cores = await si.cpu()
+  cores = cores.physicalCores
+
+  console.log('Number of Cores:', cores)
+
+  var timer = process.hrtime(start)
+  console.log('Starting...')
+
+  for(var i = 1; i <= cores; i++){
+    stack.push(encodeVideoWithSubtitles(id, i, cores));
+  }
+
+  async function encodeVideos(videos, i = 0) {
+    await videos[i]
+    if(videos[i + 1]){
+      console.log(i)
+      await encodeVideos(videos, i + 1)
+    }
+  };
+
+  await encodeVideos(stack)
+
+  console.log('Completed All')
+  console.info(`Execution time Single Core: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
+}
+
+singleCore()
+// multiCore()
