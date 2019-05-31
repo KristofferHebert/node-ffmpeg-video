@@ -5,16 +5,15 @@ const ffmpeg = require('fluent-ffmpeg')
 const youtubedl = require('youtube-dl')
 ffmpeg.setFfmpegPath(ffmpegPath)
 
-function encodeVideoWithSubtitles(ID, INDEX, CORES){
-  console.log(`Processing video ${INDEX} of ${CORES}`)
+function encodeVideoWithSubtitles(ID, INDEX){
 
-  return new Promise(function(resolve, rejection){
+  return new Promise(function(resolve, reject){
 
     ffmpeg()
     .input(`${ID}.en.vtt`)
     .output(`${ID}.en.ass`)
     .exec()
-  
+    
     ffmpeg()
     .input(`${ID}.mp4`)
     .videoFilter(`subtitles=${ID}.en.ass`)
@@ -22,7 +21,9 @@ function encodeVideoWithSubtitles(ID, INDEX, CORES){
     .on('end', function() {
       resolve();
     })
+    .on( 'error', (error) => { console.log(error); reject(error)  })
     .exec()
+     
   })
 
 }

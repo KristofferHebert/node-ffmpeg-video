@@ -99,7 +99,8 @@ async function getSubTitles(url){
 
 function scheduleWorker(videoID, index, cores){
   return new Promise(function(resolve, reject){
-    var worker = fork('./worker.js', [videoID, index, cores])
+    console.log(`Processing video ${index} of ${cores}`)
+    var worker = fork('./worker.js', [videoID, index])
     
     worker.on('error', function (error) {
       console.log('stderr: ' + error)
@@ -138,6 +139,17 @@ async function multiCore(){
   console.info(`Execution time Parallel Processing: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
 
 }
+
+async function processVideos(id, index, cores){
+  console.log(`Processing video ${index} of ${cores}`)
+
+  await encodeVideoWithSubtitles(id, index, cores)
+  
+  if(index < cores){
+    await processVideos(id, index + 1, cores)
+  }
+}
+
 async function singleCore(){
   perf.start()
 
@@ -148,24 +160,18 @@ async function singleCore(){
 
   var timer = process.hrtime(start)
   console.log('Starting...')
-
-  for(var i = 1; i <= cores; i++){
-    stack.push(encodeVideoWithSubtitles(id, i, cores));
+  try {
+    await processVideos(id, 1, cores)
   }
-
-  async function encodeVideos(videos, i = 0) {
-    await videos[i]
-    if(videos[i + 1]){
-      console.log(i)
-      await encodeVideos(videos, i + 1)
-    }
-  };
-
-  await encodeVideos(stack)
+  catch(e){
+    console.log(e)
+  }
 
   console.log('Completed All')
   console.info(`Execution time Single Core: ${(perf.stop().time * .001).toFixed(2)} Seconds`)
 }
 
-singleCore()
-// multiCore()
+(async () => {
+  await singleCore();
+  await multiCore();
+})();
